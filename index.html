@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bend Coach - Forward Fold</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #030d18;
+      --panel: rgba(3, 15, 28, 0.92);
+      --border: rgba(0, 200, 255, 0.18);
+      --green: #00ff88;
+      --orange: #ff8c00;
+      --red: #ff3333;
+      --cyan: #00e5ff;
+      --dim: rgba(120, 200, 180, 0.62);
+      --font: 'Courier New', monospace;
+    }
+    body { background: var(--bg); font-family: var(--font); overflow: hidden; width: 100vw; height: 100vh; color: #b0f0d0; }
+    #canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+    #scanlines { position: fixed; inset: 0; pointer-events: none; z-index: 2; background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.04) 3px, rgba(0,0,0,.04) 6px); }
+    #ui { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+    #header { position: absolute; top: 0; left: 0; right: 0; padding: 12px 20px 14px; background: linear-gradient(180deg, rgba(3,13,24,.95) 0%, transparent 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .app-title { font-size: 13px; letter-spacing: 6px; color: var(--cyan); text-shadow: 0 0 16px rgba(0,229,255,.5); text-transform: uppercase; }
+    #steps-bar { display: flex; gap: 8px; align-items: center; }
+    .step-bubble { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid rgba(0,200,255,.2); background: rgba(0,20,40,.7); font-size: 13px; transition: all .4s; position: relative; }
+    .step-bubble.done { background: rgba(0,255,136,.15); border-color: var(--green); box-shadow: 0 0 12px rgba(0,255,136,.3); }
+    .step-bubble.active { background: rgba(0,229,255,.15); border-color: var(--cyan); box-shadow: 0 0 18px rgba(0,229,255,.4); transform: scale(1.12); }
+    .step-bubble.active::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid rgba(0,229,255,.3); animation: pulse-ring 1.4s ease-out infinite; }
+    @keyframes pulse-ring { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.5); opacity: 0; } }
+    .step-connector { width: 18px; height: 1px; background: rgba(0,200,255,.15); transition: background .4s; }
+    .step-connector.done { background: rgba(0,255,136,.4); }
+    #step-card, #complete-card, #framing-overlay {
+      position: absolute; bottom: 70px; right: 14px; width: min(390px, 34vw);
+      background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+      padding: 18px 24px 14px; backdrop-filter: blur(14px); text-align: center;
+    }
+    #complete-card { display: none; background: rgba(0,255,136,.08); border-color: rgba(0,255,136,.35); padding: 24px; }
+    #step-card { display: none; }
+    .step-num { font-size: 10px; letter-spacing: 4px; color: var(--dim); margin-bottom: 6px; text-transform: uppercase; }
+    .step-icon { font-size: 28px; margin-bottom: 6px; display: block; }
+    .step-title { font-size: 19px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); text-shadow: 0 0 14px rgba(0,229,255,.5); margin-bottom: 6px; }
+    .step-desc { font-size: 12px; letter-spacing: 1.5px; color: var(--dim); margin-bottom: 12px; line-height: 1.6; }
+    .hold-bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+    .hold-bar-fill { height: 100%; border-radius: 3px; background: var(--cyan); width: 0%; transition: width .1s linear, background .3s; box-shadow: 0 0 8px var(--cyan); }
+    .hold-label { font-size: 9px; letter-spacing: 3px; color: var(--dim); margin-top: 6px; text-transform: uppercase; }
+    #rep-counter { position: absolute; top: 96px; right: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; backdrop-filter: blur(12px); text-align: center; min-width: 108px; }
+    .rep-label { font-size: 9px; letter-spacing: 3px; color: var(--dim); text-transform: uppercase; margin-bottom: 6px; }
+    #rep-num { font-size: 46px; font-weight: bold; line-height: 1; color: var(--cyan); text-shadow: 0 0 24px var(--cyan); }
+    #rep-total { font-size: 11px; letter-spacing: 2px; color: var(--dim); }
+    #rep-phase-indicator { font-size: 10px; letter-spacing: 2px; margin-top: 6px; text-transform: uppercase; color: var(--orange); transition: color .3s; }
+    #scores { position: absolute; top: 96px; left: 14px; width: 156px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; backdrop-filter: blur(12px); }
+    .scores-title { font-size: 9px; letter-spacing: 4px; color: var(--dim); margin-bottom: 10px; text-transform: uppercase; }
+    .sc-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .sc-name { font-size: 10px; color: var(--dim); width: 50px; flex-shrink: 0; letter-spacing: 1px; }
+    .sc-bar { flex: 1; height: 4px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
+    .sc-fill { height: 100%; border-radius: 2px; transition: width .3s, background .3s; width: 0%; }
+    .sc-val { font-size: 11px; font-weight: bold; width: 24px; text-align: right; flex-shrink: 0; }
+    #total-score { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,200,255,.1); text-align: center; }
+    #total-num { font-size: 46px; font-weight: bold; line-height: 1; color: var(--cyan); text-shadow: 0 0 24px var(--cyan); }
+    #total-lbl { font-size: 9px; letter-spacing: 3px; color: var(--dim); text-transform: uppercase; }
+    #voice-bar { position: absolute; bottom: 140px; right: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(12px); text-align: center; min-width: 120px; }
+    .vb-label { font-size: 9px; letter-spacing: 3px; color: var(--dim); text-transform: uppercase; margin-bottom: 8px; }
+    #voice-status { font-size: 11px; letter-spacing: 2px; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); margin-bottom: 10px; }
+    #voice-waves { display: flex; gap: 4px; justify-content: center; align-items: flex-end; height: 24px; margin-bottom: 10px; }
+    .wave-bar { width: 4px; border-radius: 2px; background: var(--cyan); opacity: .3; transition: opacity .3s; }
+    .wave-bar.active { opacity: 1; animation: wave .8s ease-in-out infinite; }
+    .wave-bar:nth-child(2) { animation-delay: .1s; } .wave-bar:nth-child(3) { animation-delay: .2s; } .wave-bar:nth-child(4) { animation-delay: .3s; } .wave-bar:nth-child(5) { animation-delay: .15s; }
+    @keyframes wave { 0%, 100% { height: 4px; } 50% { height: 20px; } }
+    #color-legend { position: absolute; bottom: 56px; left: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(12px); display: flex; flex-direction: column; gap: 6px; }
+    .leg-item { display: flex; align-items: center; gap: 8px; font-size: 9px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; }
+    .leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    #controls { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: all; }
+    .ctrl-btn { background: var(--panel); border: 1px solid var(--border); color: var(--cyan); padding: 8px 16px; border-radius: 20px; cursor: pointer; font-family: var(--font); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; transition: all .2s; backdrop-filter: blur(10px); }
+    .ctrl-btn:hover { background: rgba(0,229,255,.12); border-color: var(--cyan); box-shadow: 0 0 14px rgba(0,229,255,.2); }
+    .ctrl-btn.muted { color: rgba(0,229,255,.35); border-color: rgba(0,200,255,.1); }
+    #no-pose { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(3,15,28,.85); border: 1px solid rgba(0,200,255,.2); border-radius: 12px; padding: 12px 24px; opacity: 0; transition: opacity .3s; pointer-events: none; }
+    .np-text { font-size: 12px; letter-spacing: 3px; color: var(--dim); text-transform: uppercase; }
+    #loading, #error-box { position: fixed; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; transition: opacity .6s; padding: 40px; }
+    #error-box { display: none; }
+    .load-title { font-size: 28px; letter-spacing: 8px; color: var(--cyan); text-shadow: 0 0 30px rgba(0,229,255,.5); text-transform: uppercase; }
+    .load-sub, .load-msg, .err-msg, .err-steps { font-size: 10px; letter-spacing: 3px; color: var(--dim); text-transform: uppercase; text-align: center; line-height: 2; }
+    .load-track { width: 240px; height: 2px; background: rgba(255,255,255,.08); border-radius: 1px; overflow: hidden; }
+    .load-fill { height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); border-radius: 1px; animation: loading-anim 3s ease-in-out forwards; }
+    @keyframes loading-anim { 0% { width: 0%; } 40% { width: 55%; } 80% { width: 82%; } 100% { width: 100%; } }
+    .err-title { font-size: 20px; letter-spacing: 4px; color: var(--red); text-transform: uppercase; }
+    .complete-icon { font-size: 52px; animation: icon-pulse 3s ease-in-out infinite; }
+    @keyframes icon-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+    .complete-title { font-size: 22px; font-weight: bold; letter-spacing: 5px; color: var(--green); text-shadow: 0 0 24px rgba(0,255,136,.6); margin: 8px 0 4px; text-transform: uppercase; }
+    .complete-sub { font-size: 11px; letter-spacing: 3px; color: var(--dim); }
+    @media (max-width: 900px) {
+      #step-card, #complete-card, #framing-overlay { right: auto !important; left: 50% !important; transform: translateX(-50%) !important; width: min(600px, 90vw) !important; }
+      #voice-bar { display: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="loading">
+    <div class="load-title">Bend Coach</div>
+    <div class="load-sub">Forward Fold</div>
+    <div class="load-track"><div class="load-fill"></div></div>
+    <div class="load-msg" id="load-msg">Loading AI model...</div>
+  </div>
+  <div id="error-box">
+    <div class="err-title">Cannot Start</div>
+    <div class="err-msg" id="err-msg">Camera access was denied.</div>
+    <div class="err-steps">To fix this:<br>1. Open this file in Chrome or Edge<br>2. Click the camera icon in the address bar<br>3. Allow camera access<br>4. Refresh the page</div>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="scanlines"></div>
+  <div id="ui">
+    <div id="header">
+      <div class="app-title">BendVision - Forward Fold</div>
+      <div id="steps-bar"></div>
+    </div>
+    <div id="color-legend">
+      <div class="leg-item"><div class="leg-dot" style="background:#ff3333"></div>Needs work</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#ff8c00"></div>Almost there</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#00ff88"></div>Correct</div>
+    </div>
+    <div id="scores">
+      <div class="scores-title">Scores</div>
+      <div class="sc-row"><span class="sc-name">FEET</span><div class="sc-bar"><div class="sc-fill" id="sc-feet"></div></div><span class="sc-val" id="sv-feet">0</span></div>
+      <div class="sc-row"><span class="sc-name">POST</span><div class="sc-bar"><div class="sc-fill" id="sc-posture"></div></div><span class="sc-val" id="sv-posture">0</span></div>
+      <div class="sc-row"><span class="sc-name">FOLD</span><div class="sc-bar"><div class="sc-fill" id="sc-fold"></div></div><span class="sc-val" id="sv-fold">0</span></div>
+      <div class="sc-row"><span class="sc-name">KNEES</span><div class="sc-bar"><div class="sc-fill" id="sc-knees"></div></div><span class="sc-val" id="sv-knees">0</span></div>
+      <div id="total-score"><div id="total-num">--</div><div id="total-lbl">Total</div></div>
+    </div>
+    <div id="rep-counter">
+      <div class="rep-label">Hold</div>
+      <div id="rep-num">7</div>
+      <div id="rep-total">Seconds</div>
+      <div id="rep-phase-indicator">-</div>
+    </div>
+    <div id="voice-bar">
+      <div class="vb-label">Voice Coach</div>
+      <div id="voice-status">READY</div>
+      <div id="voice-waves">
+        <div class="wave-bar" style="height:6px" id="w1"></div>
+        <div class="wave-bar" style="height:14px" id="w2"></div>
+        <div class="wave-bar" style="height:20px" id="w3"></div>
+        <div class="wave-bar" style="height:14px" id="w4"></div>
+        <div class="wave-bar" style="height:8px" id="w5"></div>
+      </div>
+    </div>
+    <div id="framing-overlay">
+      <div class="step-num">Getting Ready</div>
+      <span class="step-icon">CAM</span>
+      <div class="step-title">Frame Check</div>
+      <div class="step-desc">Keep head, torso, hands, and legs visible</div>
+    </div>
+    <div id="step-card">
+      <div class="step-num" id="card-num">Step 1 of 7</div>
+      <span class="step-icon" id="card-icon">FEET</span>
+      <div class="step-title" id="card-title">Feet Placement</div>
+      <div class="step-desc" id="card-desc">Stand facing the camera, feet hip-width apart.</div>
+      <div class="hold-bar-bg"><div class="hold-bar-fill" id="hold-fill"></div></div>
+      <div class="hold-label" id="hold-label">Follow the coach</div>
+    </div>
+    <div id="complete-card">
+      <div class="complete-icon">OK</div>
+      <div class="complete-title">Fold Complete!</div>
+      <div class="complete-sub">Slowly roll up and breathe</div>
+    </div>
+    <div id="no-pose"><div class="np-text">Come back into frame</div></div>
+    <div id="controls">
+      <button class="ctrl-btn" id="btn-voice" onclick="toggleVoice()">Voice On</button>
+      <button class="ctrl-btn" onclick="repeatVoice()">Repeat</button>
+      <button class="ctrl-btn" onclick="resetAll()">Reset</button>
+      <button class="ctrl-btn" id="btn-ghost" onclick="toggleGhost()">Ghost</button>
+      <button class="ctrl-btn" id="btn-focus" onclick="toggleFocus()">Focus</button>
+    </div>
+  </div>
+  <video id="video" style="display:none" playsinline autoplay muted></video>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+    const TOTAL_REPS = 1;
+    const GATE_FRAMES_FAST = 2;
+    const MIN_CUE_GAP = 1300;
+    const SHORT_CUE_GAP = 700;
+    const REP_CUE_REPEAT_MS = 3600;
+    const BREAK_GATE_FRAMES = 16;
+    const PRE_REP_BREAK_FRAMES = 3;
+    const OUT_OF_FRAME_GATE_FRAMES = 3;
+    const HOLD_MS = 7000;
+    const COL_RED = '#ff3333';
+    const COL_AMBER = '#ff8c00';
+    const COL_GREEN = '#00ff88';
+    const COL_CYAN = '#00e5ff';
+
+    const STEPS = [
+      { icon: 'FEET', title: 'Feet Placement', desc: 'Stand facing camera, feet hip-width apart.' },
+      { icon: 'SIDE', title: 'Turn Sideways', desc: 'Turn 90 degrees so your shoulder line is visible.' },
+      { icon: 'POST', title: 'Tall Posture', desc: 'Chest up, shoulders relaxed, chin level.' },
+      { icon: 'FOLD', title: 'Fold Forward', desc: 'Slowly fold forward, leading with your chest.' },
+      { icon: 'KNEE', title: 'Straight Knees', desc: 'Keep knees straight, tailbone to ceiling.' },
+      { icon: 'NECK', title: 'Relax Neck', desc: 'Let the crown of your head point to the floor.' },
+      { icon: 'HOLD', title: 'Hold Stretch', desc: 'Let gravity work. Decompress your back.' },
+      { icon: 'DONE', title: 'Complete', desc: 'Forward fold is complete.' },
+    ];
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('video');
+    const synth = window.speechSynthesis;
+    if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = () => synth.getVoices();
+    synth.getVoices();
+
+    let voiceEnabled = true, showGhost = true, focusMode = true, isSpeaking = false, completed = false;
+    let currentStep = 0, phase = 'framing', sessionStarted = false, framingConfirmed = false, framingIntroDone = false;
+    let lastFramingCueTime = 0, lastFramingCueIdx = -1, phaseStableFrames = 0, lastCueTime = 0, lastSpoken = '', lastAnnouncement = '', phaseVoiceLock = false;
+    let holdStartTime = 0, holdComplete = false, isFirstRep = true;
+    let feetOkLocked = false, sideOkLocked = false, postureCueDone = false, foldLocked = false, kneesLocked = false, neckLocked = false;
+    let _sideConfirmCount = 0, outOfFrameFrames = 0, frameInterrupt = null, frameRestartInProgress = false, repBreakFrames = 0, flowToken = 0;
+    const cueQueues = new Map(), cueMemory = new Map();
+
+    const GREETINGS = [
+      "Welcome. Stand tall, breathe steadily, and we will do a forward fold.",
+      "Welcome in. Relax your neck, feel your feet, and prepare to fold forward.",
+      "Hello. We will move slowly: fold, straighten knees, and decompress the spine.",
+      "Set your posture. I will guide your forward fold with simple cues.",
+    ];
+    const FRAMING_CUES = [
+      "Step back until your head, torso, hands, and feet are visible.",
+      "I need your full body visible. Step back and centre yourself in the frame.",
+      "Create a little more space from the camera so I can see your shoulders and hands.",
+      "Move back until your hands and feet stay in view.",
+    ];
+    const FRAMING_CONFIRMATIONS = [
+      "Full body visible. Hold steady and we will begin.",
+      "Clear frame. I can see what I need. Let's begin.",
+      "You are fully in frame. Stay steady and we will start.",
+    ];
+    const VOICE = {
+      feetIntro: [
+        "Start with your foundation. Face the camera and place your feet hip-width apart.",
+        "Stand straight facing me, feet hip-width apart.",
+        "First set your stance. Feet about hip-width, toes comfortable.",
+      ],
+      feetTooClose: ["Widen your feet a little.", "Feet are too close. Step out slightly.", "Open your stance to hip-width."],
+      feetSlightlyNarrow: ["Just a tiny bit wider.", "Almost. Nudge the feet outward.", "A small step wider and your base is set."],
+      feetTooWide: ["Bring the feet slightly closer.", "A little narrower. Find hip-width.", "Ease the feet inward slightly."],
+      feetGood: ["Feet set. Keep that base steady.", "Good stance. Stay grounded.", "Feet confirmed."],
+      sideTurnIntro: [
+        "Now turn sideways 90 degrees so I can see your shoulder line.",
+        "Keep the feet planted and rotate to a side view.",
+        "Turn 90 degrees to the camera so I can track the lift.",
+      ],
+      sideTurnCue: ["Turn more sideways.", "Rotate to a 90 degree side view.", "I need your side line. Turn a little more."],
+      sideTurnGood: ["Side angle confirmed.", "Good angle. Hold that position.", "I can see your shoulder line."],
+      postureCue: [
+        "Keep your chest up, shoulders relaxed, and look straight ahead with your chin level.",
+        "Chest lifted, shoulders soft, eyes forward, chin level.",
+        "Stand tall. Relax the shoulders and keep your gaze straight ahead.",
+      ],
+      foldIntro: ["Slowly fold forward, leading with your chest.", "Hinge at the hips and fold forward.", "Begin folding forward. Lead with the chest."],
+      foldCue: ["Fold deeper. Bring your chest toward the floor.", "Hinge further forward at the hips.", "Let your torso hang forward."],
+      foldGood: ["Good fold.", "Torso angle confirmed.", "Excellent forward fold."],
+      kneesIntro: ["Keep your knees straight and push your tailbone toward the ceiling.", "Straighten the knees. Lengthen the spine.", "Push the hips up and straighten both knees."],
+      kneesCue: [
+  "Continue lengthening the legs.",
+  "Keep the knees long and soft.",
+  "Gently straighten the legs a little more.",
+  "Lift the hips upward and lengthen the knees."
+],
+      kneesGood: ["Knees are straight. Good.", "Straight legs confirmed.", "Good length in the legs."],
+      neckIntro: ["Relax your neck so the crown of your head points toward the floor.", "Let your head hang heavy. Release neck tension.", "Look back through your legs to relax the neck."],
+      neckCue: ["Relax the neck. Point the top of your head down.", "Don't look up. Let the head hang.", "Release your neck completely."],
+      neckGood: ["Neck is relaxed.", "Head position confirmed.", "Good. Keep the neck soft."],
+      holdIntro: ["Hold here and breathe. Let gravity decompress your back.", "Stay folded. Hands may or may not touch the floor, just let gravity work.", "Hold this stretch. Feel your back decompress."],
+      holdCue: ["Hold. Keep breathing.", "Stay in the fold. Relax the spine.", "Keep holding. Breathe deeply."],
+      outOfFrame: [
+        "You are out of frame. Step back until your full body is visible.",
+        "I cannot see you fully. Come back into frame before continuing.",
+        "Step back so I can see your whole body and hands.",
+      ],
+      welcomeBack: [
+        "You are visible again. Take a breath; we will restart from setup.",
+        "You are back in frame. Hold still; we will set up again.",
+        "I can see you again. Rebuild your posture from the beginning.",
+      ],
+      complete: ["Fold complete. Slowly roll up to standing.", "That is done. Bend your knees slightly and roll up.", "Stretch complete. Rise up slowly."],
+      completeExtra: ["Good work decompressing the spine.", "Your back should feel much better.", "Great focus on the stretch.","Excellent work.",
+  "Beautiful forward fold.",
+  "Great job decompressing the spine.",
+  "Well done. Your stretch is complete."],
+    };
+
+    function shuffleArray(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+    function drawFromQueue(key, pool) {
+      if (!cueQueues.has(key) || cueQueues.get(key).length === 0) {
+        const lastPick = cueMemory.get(key);
+        let fresh = shuffleArray(pool);
+        if (fresh.length > 1 && fresh[0] === lastPick) { const swap = Math.floor(Math.random() * (fresh.length - 1)) + 1; [fresh[0], fresh[swap]] = [fresh[swap], fresh[0]]; }
+        cueQueues.set(key, fresh);
+      }
+      const chosen = cueQueues.get(key).shift();
+      cueMemory.set(key, chosen);
+      return chosen;
+    }
+    function resetCueQueues() { cueQueues.clear(); cueMemory.clear(); }
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    resize(); window.addEventListener('resize', resize);
+
+    function setWaves(on) { for (let i = 1; i <= 5; i++) document.getElementById('w' + i).classList.toggle('active', on); }
+    function setVoiceStatus(txt) { document.getElementById('voice-status').textContent = txt; }
+    function pickVoice() {
+      const voices = synth.getVoices();
+      const prio = [
+        v => v.name === 'Microsoft Mark - English (United States)',
+        v => /English.*United States/i.test(v.name),
+        v => /English/i.test(v.lang || v.name),
+      ];
+      for (const pred of prio) { const found = voices.find(pred); if (found) return found; }
+      return voices[0] || null;
+    }
+    function speak(text, opts = {}) {
+      const { force = false, minGap = 4000 } = opts;
+      if (!voiceEnabled || !text) return false;
+      const now = Date.now();
+      if (!force && (isSpeaking || now - lastCueTime < minGap || text === lastSpoken)) return false;
+      synth.cancel();
+      const utt = new SpeechSynthesisUtterance(text);
+      const chosen = pickVoice(); if (chosen) utt.voice = chosen;
+      utt.rate = 0.92; utt.pitch = 0.9; utt.volume = 1;
+      lastCueTime = now; lastSpoken = text; lastAnnouncement = text; isSpeaking = true; setVoiceStatus('SPEAKING'); setWaves(true);
+      utt.onend = () => { isSpeaking = false; setWaves(false); setVoiceStatus(voiceEnabled ? 'READY' : 'MUTED'); };
+      utt.onerror = utt.onend;
+      synth.speak(utt);
+      return true;
+    }
+    function speakFromPool(key, arr, opts = {}) { return speak(drawFromQueue(key, arr), opts); }
+    function speakSequence(lines, gapMs, onAllDone, token = flowToken) {
+      if (!voiceEnabled || !lines.length) { if (onAllDone) onAllDone(); return; }
+      let idx = 0;
+      function next() {
+        if (token !== flowToken) return;
+        if (idx >= lines.length) { if (onAllDone) onAllDone(); return; }
+        const text = lines[idx++]; if (!text) { next(); return; }
+        lastCueTime = Date.now(); lastSpoken = text; lastAnnouncement = text; synth.cancel();
+        const utt = new SpeechSynthesisUtterance(text); const chosen = pickVoice(); if (chosen) utt.voice = chosen;
+        utt.rate = 0.92; utt.pitch = 0.9; utt.volume = 1; isSpeaking = true; setVoiceStatus('SPEAKING'); setWaves(true);
+        utt.onend = () => { isSpeaking = false; setWaves(false); setVoiceStatus(voiceEnabled ? 'READY' : 'MUTED'); setTimeout(next, gapMs); };
+        utt.onerror = utt.onend; synth.speak(utt);
+      }
+      next();
+    }
+
+    function buildStepBubbles() {
+      const bar = document.getElementById('steps-bar'); bar.innerHTML = '';
+      STEPS.forEach((s, i) => {
+        if (i > 0) { const conn = document.createElement('div'); conn.className = 'step-connector' + (i <= currentStep ? ' done' : ''); conn.id = `conn-${i}`; bar.appendChild(conn); }
+        const bub = document.createElement('div'); bub.className = 'step-bubble' + (i < currentStep ? ' done' : i === currentStep ? ' active' : ''); bub.id = `bub-${i}`; bub.textContent = i < currentStep ? '✓' : s.icon; bar.appendChild(bub);
+      });
+    }
+    function updateBubbles() {
+      STEPS.forEach((s, i) => {
+        const bub = document.getElementById(`bub-${i}`); if (!bub) return;
+        bub.className = 'step-bubble' + (i < currentStep ? ' done' : i === currentStep ? ' active' : ''); bub.textContent = i < currentStep ? '✓' : s.icon;
+        const conn = document.getElementById(`conn-${i}`); if (conn) conn.className = 'step-connector' + (i <= currentStep ? ' done' : '');
+      });
+    }
+    function updateStepCard() {
+      const step = STEPS[Math.min(currentStep, STEPS.length - 1)];
+      document.getElementById('card-num').textContent = `Step ${Math.min(currentStep + 1, STEPS.length)} of ${STEPS.length}`;
+      document.getElementById('card-icon').textContent = step.icon;
+      document.getElementById('card-title').textContent = step.title;
+      document.getElementById('card-desc').textContent = step.desc;
+      document.getElementById('hold-label').textContent = phase === 'hold' ? 'Hold progress' : 'Follow the coach';
+      if (phase !== 'hold') document.getElementById('hold-fill').style.width = '0%';
+      updateBubbles();
+    }
+    function setPhase(nextPhase, stepIdx) { phase = nextPhase; currentStep = stepIdx; phaseStableFrames = 0; updateStepCard(); }
+    function updateRepCounter() {
+      const el = document.getElementById('rep-num');
+      const phaseEl = document.getElementById('rep-phase-indicator');
+      const HOLD_SECS = HOLD_MS / 1000;
+      let remaining = HOLD_SECS;
+      if (phase === 'hold') {
+        const elapsed = Math.floor((Date.now() - holdStartTime) / 1000);
+        remaining = Math.max(0, HOLD_SECS - elapsed);
+        phaseEl.textContent = 'HOLDING'; phaseEl.style.color = COL_AMBER;
+      } else {
+        phaseEl.textContent = 'READY'; phaseEl.style.color = COL_GREEN;
+      }
+      el.textContent = remaining;
+      const pct = remaining === 0 ? 100 : phase === 'hold' ? ((HOLD_SECS - remaining) / HOLD_SECS) * 100 : 0;
+      const fill = document.getElementById('hold-fill'); fill.style.width = pct + '%'; fill.style.background = pct >= 100 ? COL_GREEN : pct >= 50 ? COL_AMBER : COL_RED;
+    }
+
+    function vis(lm, ...idx) { return idx.every(i => (lm[i]?.visibility ?? 0) > 0.30); }
+    function angle3(A, B, C) {
+      const ax = A.x - B.x, ay = A.y - B.y, cx = C.x - B.x, cy = C.y - B.y;
+      const dot = ax * cx + ay * cy, mag = Math.sqrt((ax * ax + ay * ay) * (cx * cx + cy * cy));
+      if (mag < 1e-6) return 0;
+      return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI;
+    }
+    function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+    function isFullBodyVisible(lm) {
+  if (!lm || lm.length < 29) return false;
+
+  const visible = i => (lm[i]?.visibility ?? 0) > 0.55;
+
+  const required = [0,11,12,23,24,25,26,27,28];
+
+  // all major landmarks visible
+  const enoughVisible = required.every(i => visible(i));
+
+  if (!enoughVisible) return false;
+
+  // body should occupy enough screen area
+  const bodyWidth =
+    Math.abs(lm[11].x - lm[12].x);
+
+  const bodyHeight =
+    Math.abs(lm[0].y - ((lm[27].y + lm[28].y)/2));
+
+  if (bodyWidth < 0.08 || bodyHeight < 0.35)
+    return false;
+
+  // reject partial bodies near edge
+  const centerX =
+    (lm[23].x + lm[24].x) / 2;
+
+  if (centerX < 0.2 || centerX > 0.8)
+    return false;
+
+  return true;
+}
+    function assessFeetWidth(lm) {
+      if (!vis(lm, 27, 28, 11, 12)) return { ok: false, reason: 'notVisible', score: 0 };
+      const ankleSpan = Math.abs(lm[27].x - lm[28].x);
+      const shoulderSpan = Math.abs(lm[11].x - lm[12].x);
+      const ratio = shoulderSpan > 0.01 ? ankleSpan / shoulderSpan : 1;
+      const score = clamp(Math.round((1 - Math.abs(ratio - 1.0) / 0.5) * 100), 0, 100);
+      if (ratio < 0.55) return { ok: false, reason: 'tooClose', score };
+      if (ratio < 0.75) return { ok: false, reason: 'slightlyNarrow', score };
+      if (ratio > 1.6) return { ok: false, reason: 'tooWide', score };
+      return { ok: true, reason: null, score };
+    }
+        const SIDE_CONFIRM_FRAMES = 2;
+    function isSidewaysFrame(lm) {
+      if (!vis(lm, 11, 12, 23, 24)) return false;
+      const shSpan = Math.abs(lm[11].x - lm[12].x), hipSpan = Math.abs(lm[23].x - lm[24].x);
+      const zDiff = Math.abs((lm[11].z ?? 0) - (lm[12].z ?? 0));
+      
+      // Check vertical alignment - shoulders should be above hips in side view
+      const shoulderMidX = (lm[11].x + lm[12].x) / 2;
+      const hipMidX = (lm[23].x + lm[24].x) / 2;
+      const torsoAlign = Math.abs(shoulderMidX - hipMidX);
+      
+      // Side profile requires: narrow shoulder/hip span AND significant z-depth AND good alignment
+      const hasNarrowSpan = shSpan < 0.28 && hipSpan < 0.28;
+      const hasSideDepth = zDiff > 0.04;
+      const isAligned = torsoAlign < 0.15;
+      
+      return (hasNarrowSpan && hasSideDepth && isAligned) || (zDiff > 0.08 && isAligned);
+    }
+    function isSideways(lm) { if (isSidewaysFrame(lm)) _sideConfirmCount++; else _sideConfirmCount = 0; return _sideConfirmCount >= SIDE_CONFIRM_FRAMES; }
+    function visibleSide(lm) { return (lm[11]?.visibility ?? 0) > (lm[12]?.visibility ?? 0) ? 'left' : 'right'; }
+    function sideIdx(lm) {
+      const left = visibleSide(lm) === 'left';
+      return { sh: left ? 11 : 12, el: left ? 13 : 14, wr: left ? 15 : 16, hip: left ? 23 : 24, knee: left ? 25 : 26 };
+    }
+    function armIdx(lm) {
+      const leftScore = (lm[11]?.visibility ?? 0) + (lm[13]?.visibility ?? 0) + (lm[15]?.visibility ?? 0) * 1.5;
+      const rightScore = (lm[12]?.visibility ?? 0) + (lm[14]?.visibility ?? 0) + (lm[16]?.visibility ?? 0) * 1.5;
+      const left = leftScore >= rightScore;
+      return { sh: left ? 11 : 12, el: left ? 13 : 14, wr: left ? 15 : 16, hip: left ? 23 : 24, knee: left ? 25 : 26 };
+    }
+    function visibleHandIdx(lm) {
+      const side = armIdx(lm);
+      if ((lm[side.wr]?.visibility ?? 0) > 0.30) return side.wr;
+      return (lm[15]?.visibility ?? 0) > (lm[16]?.visibility ?? 0) ? 15 : 16;
+    }
+    function assessPosture(lm) {
+      const s = sideIdx(lm); if (!vis(lm, s.sh, s.hip)) return { ok: true, score: 90 };
+      const lean = Math.abs(lm[s.sh].x - lm[s.hip].x);
+      const score = clamp(Math.round((1 - lean / 0.22) * 100), 0, 100);
+      return { ok: lean < 0.16, score, lean };
+    }
+    function assessFold(lm) {
+      const s = sideIdx(lm); if (!vis(lm, s.sh, s.hip)) return { ok: false, score: 0 };
+      const dy = lm[s.hip].y - lm[s.sh].y;
+      const score = clamp(Math.round((0.3 - dy) / 0.2 * 100), 0, 100);
+      return { ok: dy < 0.15, score, dy };
+    }
+    function kneeAnkIdx(lm) {
+      const left = visibleSide(lm) === 'left';
+      return { hip: left ? 23 : 24, knee: left ? 25 : 26, ank: left ? 27 : 28 };
+    }
+    function assessKnees(lm) {
+      const s = kneeAnkIdx(lm); if (!vis(lm, s.hip, s.knee, s.ank)) return { ok: false, score: 0 };
+      const ang = angle3(lm[s.hip], lm[s.knee], lm[s.ank]);
+      const score = clamp(Math.round((ang - 125) / 25 * 100), 0, 100);
+      return { ok: ang > 138, score, ang, ...s };
+    }
+    function drawKneeAngle(lm) {
+      const k = assessKnees(lm);
+      if (!k.ang || !vis(lm, k.hip, k.knee, k.ank)) return;
+      const CW = canvas.width, CH = canvas.height;
+      const hip = lC(lm[k.hip]), knee = lC(lm[k.knee]), ank = lC(lm[k.ank]);
+      // vectors from knee to hip and knee to ankle
+      const toHip = { x: hip.x - knee.x, y: hip.y - knee.y };
+      const toAnk = { x: ank.x - knee.x, y: ank.y - knee.y };
+      const aHip = Math.atan2(toHip.y, toHip.x);
+      const aAnk = Math.atan2(toAnk.y, toAnk.x);
+      const r = Math.min(CW, CH) * 0.045;
+      const col = k.ok ? COL_GREEN : k.ang > 130 ? COL_AMBER : COL_RED;
+      ctx.save();
+      // arc
+      ctx.beginPath();
+      ctx.arc(knee.x, knee.y, r, aHip, aAnk, false);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2.5;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = col;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // label — position it along bisector
+      const bisect = (aHip + aAnk) / 2;
+      const lx = knee.x + Math.cos(bisect) * (r + 18);
+      const ly = knee.y + Math.sin(bisect) * (r + 18);
+      const label = Math.round(k.ang) + '°';
+      ctx.font = `bold ${Math.round(CW * 0.016)}px 'Courier New', monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = col;
+      ctx.fillStyle = col;
+      ctx.fillText(label, lx, ly);
+      ctx.restore();
+    }
+    function assessNeck(lm) {
+      const side = visibleSide(lm) === 'left';
+      const ear = side ? 7 : 8;
+      const s = sideIdx(lm);
+      if (!vis(lm, ear, s.sh)) return { ok: false, score: 0 };
+      const dy = lm[ear].y - lm[s.sh].y; 
+      const score = clamp(Math.round((dy + 0.1) / 0.15 * 100), 0, 100);
+      return { ok: dy > -0.05, score, dy };
+    }
+    function computeScores(lm) {
+      const feet = assessFeetWidth(lm), posture = assessPosture(lm), fold = assessFold(lm), knees = assessKnees(lm);
+      const total = Math.round(feet.score * 0.2 + posture.score * 0.2 + fold.score * 0.3 + knees.score * 0.3);
+      return { feet: feet.score, posture: posture.score, fold: fold.score, knees: knees.score, total };
+    }
+
+    const maskCanvas = document.createElement('canvas'), maskCtx = maskCanvas.getContext('2d');
+    const glowCanvas = document.createElement('canvas'), glowCtx = glowCanvas.getContext('2d');
+    const G_POSE = {
+  head: { x: .46, y: .50 },
+  sh: { x: .46, y: .42 },
+  hip: { x: .58, y: .46 },
+  knee: { x: .60, y: .68 },
+  ank: { x: .62, y: .88 },
+
+  elbow: { x: .44, y: .58 },
+
+  // hands hanging downward
+  wrist: { x: .42, y: .80 }
+};
+    const G_BONES = [['head', 'sh'], ['sh', 'hip'], ['hip', 'knee'], ['knee', 'ank'], ['sh', 'elbow'], ['elbow', 'wrist']];
+    function gC(p) { return { x: p.x * canvas.width, y: p.y * canvas.height }; }
+    function lC(p) { return { x: (1 - p.x) * canvas.width, y: p.y * canvas.height }; }
+    function drawGhost() {
+      if (!showGhost) return;
+      ctx.save(); ctx.strokeStyle = 'rgba(255,80,80,.20)'; ctx.fillStyle = 'rgba(255,80,80,.25)'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([5, 8]);
+      for (const [a, b] of G_BONES) { const pa = gC(G_POSE[a]), pb = gC(G_POSE[b]); ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
+      ctx.setLineDash([]);
+      for (const k of Object.keys(G_POSE)) { const p = gC(G_POSE[k]); ctx.beginPath(); ctx.arc(p.x, p.y, k === 'head' ? 12 : 4, 0, Math.PI * 2); if (k === 'head') ctx.stroke(); else ctx.fill(); }
+      ctx.restore();
+    }
+    const PBONES = [[0, 11], [0, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
+    function drawBodyAura(results, color) {
+      if (!results.segmentationMask) return;
+      const CW = canvas.width, CH = canvas.height;
+      if (maskCanvas.width !== CW || maskCanvas.height !== CH) { maskCanvas.width = CW; maskCanvas.height = CH; glowCanvas.width = CW; glowCanvas.height = CH; }
+      maskCtx.clearRect(0, 0, CW, CH); maskCtx.save(); maskCtx.translate(CW, 0); maskCtx.scale(-1, 1); maskCtx.drawImage(results.segmentationMask, 0, 0, CW, CH); maskCtx.restore();
+      maskCtx.globalCompositeOperation = 'source-in'; maskCtx.fillStyle = color; maskCtx.fillRect(0, 0, CW, CH); maskCtx.globalCompositeOperation = 'source-over';
+      glowCtx.clearRect(0, 0, CW, CH); glowCtx.save(); glowCtx.globalAlpha = .5; glowCtx.filter = 'blur(70px)'; glowCtx.drawImage(maskCanvas, 0, 0); glowCtx.globalAlpha = .65; glowCtx.filter = 'blur(38px)'; glowCtx.drawImage(maskCanvas, 0, 0); glowCtx.globalAlpha = .85; glowCtx.filter = 'blur(16px)'; glowCtx.drawImage(maskCanvas, 0, 0); glowCtx.filter = 'none'; glowCtx.restore();
+      glowCtx.save(); glowCtx.globalCompositeOperation = 'destination-out'; glowCtx.translate(CW, 0); glowCtx.scale(-1, 1); glowCtx.drawImage(results.segmentationMask, 0, 0, CW, CH); glowCtx.restore();
+      ctx.save(); ctx.drawImage(glowCanvas, 0, 0); ctx.restore();
+    }
+    function assessArms(lm) {
+
+  const s = sideIdx(lm);
+
+  if (!vis(lm, s.sh, s.el, s.wr))
+    return { ok: true };
+
+  // relaxed hanging arm accepted
+  const wristBelowShoulder =
+    lm[s.wr].y > lm[s.sh].y;
+
+  return { ok: wristBelowShoulder };
+}
+    function segmentStates(lm) {
+      let feetOk = assessFeetWidth(lm).ok;
+      if (feetOkLocked) {
+        feetOk = isSidewaysFrame(lm) || feetOk;
+      }
+      const sideOk = sideOkLocked && isSidewaysFrame(lm);
+      const postureOk = assessPosture(lm).ok;
+      const foldOk = foldLocked && assessFold(lm).ok;
+      const kneesOk = kneesLocked && assessKnees(lm).ok;
+      const neckOk = neckLocked && assessNeck(lm).ok;
+      const armsOk = assessArms(lm).ok;
+      const holdOk = phase === 'hold' && foldOk && kneesOk && neckOk;
+      return { feetOk, sideOk, postureOk, foldOk, kneesOk, neckOk, armsOk, holdOk };
+    }
+    function drawSkeleton(lm) {
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = 6;
+      const legBones = new Set(['23-25', '25-27', '24-26', '26-28', '23-24']);
+      const armBones = new Set(['11-13', '13-15', '12-14', '14-16']);
+      const torsoBones = new Set(['0-11', '0-12', '11-12', '11-23', '12-24']);
+      const legJoints = new Set([23, 24, 25, 26, 27, 28]), armJoints = new Set([13, 14, 15, 16]);
+      const st = segmentStates(lm);
+      function boneColor(ai, bi) {
+        const key = `${Math.min(ai, bi)}-${Math.max(ai, bi)}`;
+        if (phase === 'complete') return COL_GREEN;
+        if (armBones.has(key)) {
+          const inFoldOrLater = ['fold', 'knees', 'neck', 'hold'].includes(phase);
+          return (inFoldOrLater && st.armsOk) ? COL_GREEN : COL_RED;
+        }
+        if (st.holdOk) return COL_GREEN;
+        if (legBones.has(key)) return (st.feetOk && (!kneesLocked || st.kneesOk)) ? COL_GREEN : COL_RED;
+        if (torsoBones.has(key)) {
+           if (ai === 0 || bi === 0) return (st.postureOk && (!neckLocked || st.neckOk)) ? COL_GREEN : COL_RED;
+           return (st.sideOk && st.postureOk && (!foldLocked || st.foldOk)) ? COL_GREEN : COL_RED;
+        }
+        return COL_RED;
+      }
+      function jointColor(i) {
+        if (phase === 'complete') return COL_GREEN;
+        if (armJoints.has(i)) {
+          const inFoldOrLater = ['fold', 'knees', 'neck', 'hold'].includes(phase);
+          return (inFoldOrLater && st.armsOk) ? COL_GREEN : COL_RED;
+        }
+        if (st.holdOk) return COL_GREEN;
+        if (legJoints.has(i)) return (st.feetOk && (!kneesLocked || st.kneesOk)) ? COL_GREEN : COL_RED;
+        if (i === 0) return (st.postureOk && (!neckLocked || st.neckOk)) ? COL_GREEN : COL_RED;
+        return (st.sideOk && st.postureOk && (!foldLocked || st.foldOk)) ? COL_GREEN : COL_RED;
+      }
+      for (const [ai, bi] of PBONES) {
+        if ((lm[ai]?.visibility ?? 0) < .45 || (lm[bi]?.visibility ?? 0) < .45) continue;
+        const col = boneColor(ai, bi); ctx.strokeStyle = col; ctx.shadowBlur = 14; ctx.shadowColor = col;
+        const pa = lC(lm[ai]), pb = lC(lm[bi]); ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+      }
+      for (let i = 0; i < lm.length; i++) {
+        if ((lm[i]?.visibility ?? 0) < .45) continue;
+        const col = jointColor(i); ctx.fillStyle = col; ctx.shadowBlur = 14; ctx.shadowColor = col;
+        const p = lC(lm[i]); ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      // drawKneeAngle(lm);
+    }
+    function getAuraColor(lm) {
+
+  // neutral blue at framing/start
+  if (phase === 'framing')
+    return COL_CYAN;
+
+  // neutral blue after completion
+  if (phase === 'complete')
+    return COL_CYAN;
+
+  const st = segmentStates(lm);
+
+  const vals = [
+    st.feetOk,
+    st.sideOk && st.postureOk,
+    (!foldLocked || st.foldOk),
+    (!kneesLocked || st.kneesOk),
+    (!neckLocked || st.neckOk)
+  ];
+
+  const good = vals.filter(Boolean).length;
+
+  if (good === vals.length) return COL_GREEN;
+  if (good === 0) return COL_RED;
+
+  return COL_AMBER;
+}
+    function updateScorePanel(sc) {
+      if (!sc) {
+        ['feet', 'posture', 'fold', 'knees'].forEach(k => { document.getElementById(`sc-${k}`).style.width = '0%'; document.getElementById(`sv-${k}`).textContent = '0'; });
+        document.getElementById('total-num').textContent = '--'; return;
+      }
+      const col = sc.total > 79 ? COL_GREEN : sc.total > 49 ? COL_AMBER : COL_RED;
+      for (const [k, v] of [['feet', sc.feet], ['posture', sc.posture], ['fold', sc.fold], ['knees', sc.knees]]) {
+        document.getElementById(`sc-${k}`).style.width = v + '%'; document.getElementById(`sc-${k}`).style.background = col;
+        const val = document.getElementById(`sv-${k}`); val.style.color = col; val.textContent = v;
+      }
+      const total = document.getElementById('total-num'); total.textContent = sc.total; total.style.color = col; total.style.textShadow = `0 0 24px ${col}`;
+    }
+
+    function pickFramingCue() { const indices = FRAMING_CUES.map((_, i) => i).filter(i => i !== lastFramingCueIdx); const idx = indices[Math.floor(Math.random() * indices.length)]; lastFramingCueIdx = idx; return FRAMING_CUES[idx]; }
+    function handleFraming(lm) {
+      const now = Date.now(); if (!framingIntroDone) return;
+      if (isFullBodyVisible(lm)) {
+        if (!framingConfirmed) {
+          framingConfirmed = true; speakFromPool('framing-ok', FRAMING_CONFIRMATIONS, { force: true, minGap: 0 });
+          function waitThenStart() { if (isSpeaking) { setTimeout(waitThenStart, 80); return; } startPoseSession(); }
+          setTimeout(waitThenStart, 200);
+        }
+      } else {
+        framingConfirmed = false;
+        if (!isSpeaking && now - lastFramingCueTime > 4200) { lastFramingCueTime = now; speak(pickFramingCue(), { force: true, minGap: 0 }); }
+      }
+    }
+    function startPoseSession() {
+      sessionStarted = true; framingConfirmed = true; phaseStableFrames = 0; feetOkLocked = false; sideOkLocked = false; postureCueDone = false; foldLocked = false; kneesLocked = false; neckLocked = false;
+      holdStartTime = 0; holdComplete = false; isFirstRep = true; _sideConfirmCount = 0; phaseVoiceLock = false; outOfFrameFrames = 0; frameInterrupt = null; frameRestartInProgress = false; flowToken++; resetCueQueues();
+      document.getElementById('framing-overlay').style.display = 'none'; document.getElementById('step-card').style.display = 'block'; document.getElementById('complete-card').style.display = 'none';
+      setPhase('feetPlacement', 0); updateRepCounter(); speakFromPool('feet-intro', VOICE.feetIntro, { force: true, minGap: 0 });
+    }
+    function enterSideTurn() { feetOkLocked = true; setPhase('sideTurn', 1); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('feet-good', VOICE.feetGood), drawFromQueue('side-intro', VOICE.sideTurnIntro)], 300, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
+    function enterPostureCue() { sideOkLocked = true; _sideConfirmCount = 0; setPhase('postureCue', 2); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('side-good', VOICE.sideTurnGood), drawFromQueue('posture', VOICE.postureCue)], 300, () => { if (token !== flowToken) return; postureCueDone = true; phaseVoiceLock = false; enterFold(); }, token); }
+    function enterFold() { setPhase('fold', 3); speakFromPool('fold-intro', VOICE.foldIntro, { force: true, minGap: 0 }); }
+    function enterKnees() { foldLocked = true; setPhase('knees', 4); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('fold-good', VOICE.foldGood), drawFromQueue('knees-intro', VOICE.kneesIntro)], 250, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
+    function enterNeck() { kneesLocked = true; setPhase('neck', 5); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('knees-good', VOICE.kneesGood), drawFromQueue('neck-intro', VOICE.neckIntro)], 250, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
+    function enterHold() { neckLocked = true; setPhase('hold', 6); holdStartTime = Date.now(); holdComplete = false; phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('neck-good', VOICE.neckGood), drawFromQueue('hold-intro', VOICE.holdIntro)], 180, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); let holdInterval = setInterval(() => { if (!sessionStarted || phase !== 'hold') clearInterval(holdInterval); else updateRepCounter(); }, 100); }
+    function finishSession() {
+      completed = true; setPhase('complete', 7); document.getElementById('step-card').style.display = 'none'; document.getElementById('complete-card').style.display = 'block'; synth.cancel();
+      speakSequence([drawFromQueue('complete', VOICE.complete), drawFromQueue('complete-extra', VOICE.completeExtra)], 500);
+    }
+    function checkFramingMidSession(lm) {
+      if (!lm || lm.length < 29) return 'halfOut';
+      if (!isFullBodyVisible(lm)) return 'halfOut';
+      if (vis(lm, 11, 12) && Math.abs(lm[11].x - lm[12].x) > 0.68) return 'tooClose';
+      return 'ok';
+    }
+    function resetPoseStateForFraming() {
+      feetOkLocked = false; sideOkLocked = false; postureCueDone = false; foldLocked = false; kneesLocked = false; neckLocked = false; holdStartTime = 0; holdComplete = false; isFirstRep = true; repBreakFrames = 0; _sideConfirmCount = 0; phaseStableFrames = 0; outOfFrameFrames = 0; frameInterrupt = null; resetCueQueues(); framingConfirmed = false; framingIntroDone = true; lastFramingCueTime = Date.now() - 4200;
+      setPhase('framing', 0); document.getElementById('framing-overlay').style.display = 'block'; document.getElementById('step-card').style.display = 'none'; document.getElementById('complete-card').style.display = 'none'; document.getElementById('hold-fill').style.width = '0%'; updateRepCounter();
+    }
+    function restartFromVisibleFrame() {
+      if (frameRestartInProgress) return; frameRestartInProgress = true; synth.cancel(); isSpeaking = false; phaseVoiceLock = true; resetPoseStateForFraming();
+      speakFromPool('welcome-back', VOICE.welcomeBack, { force: true, minGap: 0 });
+      function releaseRestartLock() { if (isSpeaking) { setTimeout(releaseRestartLock, 100); return; } phaseVoiceLock = false; frameRestartInProgress = false; }
+      setTimeout(releaseRestartLock, 200);
+    }
+    function interruptForPartialFrame(now) { frameInterrupt = 'partial'; phaseStableFrames = 0; repBreakFrames = 0; if (!isSpeaking && now - lastFramingCueTime > 4200) { lastFramingCueTime = now; speak(pickFramingCue(), { force: true, minGap: 0 }); } }
+    function interruptForLostFrame(now) {
+      if (frameInterrupt !== 'lost') { synth.cancel(); isSpeaking = false; lastSpoken = ''; }
+      frameInterrupt = 'lost'; phaseStableFrames = 0; repBreakFrames = 0;
+      if (!isSpeaking && now - lastCueTime > 900) speakFromPool('out-of-frame', VOICE.outOfFrame, { force: true, minGap: 0 });
+    }
+    function resetToPhase(nextPhase, stepIdx, cue) {
+      flowToken++; synth.cancel(); isSpeaking = false; phaseVoiceLock = false;
+      holdStartTime = 0; holdComplete = false; repBreakFrames = 0; setPhase(nextPhase, stepIdx); speak(cue, { force: true, minGap: 0 });
+    }
+    function restartPoseSetup(cue) {
+      flowToken++; synth.cancel(); isSpeaking = false; phaseVoiceLock = false;
+      feetOkLocked = false; sideOkLocked = false; postureCueDone = false; foldLocked = false; kneesLocked = false; neckLocked = false;
+      holdStartTime = 0; holdComplete = false; isFirstRep = true; repBreakFrames = 0; _sideConfirmCount = 0;
+      setPhase('feetPlacement', 0); updateRepCounter(); speak(cue, { force: true, minGap: 0 });
+    }
+    function handlePoseFlow(lm) {
+      if (!sessionStarted || completed || phaseVoiceLock) return;
+      const now = Date.now();
+      if (phase !== 'framing' && phase !== 'complete') {
+        const framingState = checkFramingMidSession(lm);
+        if (framingState !== 'ok') { outOfFrameFrames++; if (outOfFrameFrames > OUT_OF_FRAME_GATE_FRAMES) interruptForPartialFrame(now); return; }
+        if (frameInterrupt) { restartFromVisibleFrame(); return; }
+        outOfFrameFrames = 0;
+      }
+      if (phase === 'feetPlacement') {
+        const fw = assessFeetWidth(lm);
+        if (fw.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterSideTurn(); }
+        else {
+          phaseStableFrames = 0; if (feetOkLocked) feetOkLocked = false;
+          if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+            if (fw.reason === 'tooClose') speakFromPool('feet-close', VOICE.feetTooClose, { minGap: MIN_CUE_GAP });
+            else if (fw.reason === 'slightlyNarrow') speakFromPool('feet-narrow', VOICE.feetSlightlyNarrow, { minGap: MIN_CUE_GAP });
+            else if (fw.reason === 'tooWide') speakFromPool('feet-wide', VOICE.feetTooWide, { minGap: MIN_CUE_GAP });
+          }
+        }
+        return;
+      }
+      if (phase === 'sideTurn') {
+        if (isSideways(lm)) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterPostureCue(); }
+        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: MIN_CUE_GAP }); }
+        return;
+      }
+      if (phase === 'fold') {
+        if (!isSidewaysFrame(lm)) {
+          repBreakFrames++;
+          if (repBreakFrames > BREAK_GATE_FRAMES) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
+          if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: MIN_CUE_GAP });
+          return;
+        }
+        repBreakFrames = 0;
+        const fold = assessFold(lm);
+        if (fold.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterKnees(); }
+        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('fold-cue', VOICE.foldCue, { minGap: MIN_CUE_GAP }); }
+        return;
+      }
+      if (phase === 'knees') {
+        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm);
+        if (!sideOk) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
+        if (!fold.ok) { foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('fold', 3, 'Fold forward from the hips.'); return; }
+        if (knees.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterNeck(); }
+        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('knees-cue', VOICE.kneesCue, { minGap: MIN_CUE_GAP }); }
+        return;
+      }
+      if (phase === 'neck') {
+        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm), neck = assessNeck(lm);
+        if (!sideOk) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
+        if (!fold.ok) { foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('fold', 3, 'Fold forward from the hips.'); return; }
+        if (!knees.ok) { kneesLocked = false; neckLocked = false; resetToPhase('knees', 4, 'Straighten the knees.'); return; }
+        if (neck.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterHold(); }
+        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('neck-cue', VOICE.neckCue, { minGap: MIN_CUE_GAP }); }
+        return;
+      }
+      if (phase === 'hold') {
+        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm), neck = assessNeck(lm);
+        if (!sideOk || !fold.ok || !knees.ok || !neck.ok) {
+          repBreakFrames++;
+          if (repBreakFrames > BREAK_GATE_FRAMES) {
+            restartPoseSetup('Form broke. Restart from feet placement.');
+            return;
+          }
+          if (!isSpeaking && now - lastCueTime > SHORT_CUE_GAP) {
+            if (!sideOk) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: SHORT_CUE_GAP });
+            else if (!fold.ok) speakFromPool('fold-cue', VOICE.foldCue, { minGap: SHORT_CUE_GAP });
+            else if (!knees.ok) speakFromPool('knees-cue', VOICE.kneesCue, { minGap: SHORT_CUE_GAP });
+            else if (!neck.ok) speakFromPool('neck-cue', VOICE.neckCue, { minGap: SHORT_CUE_GAP });
+          }
+          return;
+        }
+        repBreakFrames = 0;
+        const elapsed = Date.now() - holdStartTime;
+        const remaining =
+  Math.ceil((HOLD_MS - elapsed) / 1000);
+
+if (
+  remaining <= 3 &&
+  remaining > 0 &&
+  now - lastCueTime > 900
+) {
+  speak(String(remaining), {
+    force: true,
+    minGap: 0
+  });
+}
+        if (elapsed >= HOLD_MS) {
+          holdComplete = true;
+          finishSession();
+        } else if (!isSpeaking && now - lastCueTime > REP_CUE_REPEAT_MS) {
+          speakFromPool('hold-cue', VOICE.holdCue, { minGap: REP_CUE_REPEAT_MS });
+        }
+        return;
+      }
+    }
+
+    function onResults(results) {
+      const CW = canvas.width, CH = canvas.height;
+      ctx.clearRect(0, 0, CW, CH);
+      ctx.save(); ctx.translate(CW, 0); ctx.scale(-1, 1); ctx.globalAlpha = focusMode ? .22 : .8; ctx.drawImage(results.image, 0, 0, CW, CH); ctx.restore();
+      if (focusMode) { ctx.fillStyle = 'rgba(3,13,24,.35)'; ctx.fillRect(0, 0, CW, CH); }
+      drawGhost();
+      const noPose = document.getElementById('no-pose');
+      if (!results.poseLandmarks?.length) {
+        noPose.style.opacity = '1'; updateScorePanel(null);
+        if (sessionStarted && !completed && phase !== 'framing') interruptForLostFrame(Date.now());
+        return;
+      }
+      noPose.style.opacity = '0';
+      if (frameInterrupt && sessionStarted && !completed && phase !== 'framing') {
+        const lm = results.poseLandmarks; if (isFullBodyVisible(lm)) restartFromVisibleFrame(); else interruptForPartialFrame(Date.now()); return;
+      }
+      outOfFrameFrames = 0;
+      const lm = results.poseLandmarks;
+      drawBodyAura(results, getAuraColor(lm)); drawSkeleton(lm); updateScorePanel(computeScores(lm)); updateRepCounter();
+      if (phase === 'framing') { handleFraming(lm); return; }
+      handlePoseFlow(lm);
+    }
+
+    function toggleVoice() {
+      voiceEnabled = !voiceEnabled; const btn = document.getElementById('btn-voice');
+      if (voiceEnabled) { btn.textContent = 'Voice On'; btn.classList.remove('muted'); setVoiceStatus('READY'); }
+      else { synth.cancel(); btn.textContent = 'Voice Off'; btn.classList.add('muted'); setWaves(false); setVoiceStatus('MUTED'); }
+    }
+    function repeatVoice() { speak(lastAnnouncement || 'Follow the on-screen guidance.', { force: true, minGap: 0 }); }
+    function resetAll() {
+      synth.cancel(); isSpeaking = false; completed = false; sessionStarted = false; framingConfirmed = false; framingIntroDone = false; lastFramingCueTime = 0; lastFramingCueIdx = -1; lastCueTime = 0; lastSpoken = ''; lastAnnouncement = ''; phaseStableFrames = 0; repBreakFrames = 0; outOfFrameFrames = 0; frameInterrupt = null; frameRestartInProgress = false; phaseVoiceLock = false; resetCueQueues(); resetPoseStateForFraming(); framingIntroDone = false; setVoiceStatus(voiceEnabled ? 'READY' : 'MUTED');
+      speakFromPool('greeting', GREETINGS, { force: true, minGap: 0 }); lastFramingCueTime = Date.now() + 1800; setTimeout(() => { framingIntroDone = true; }, 1600);
+    }
+    function toggleGhost() { showGhost = !showGhost; document.getElementById('btn-ghost').classList.toggle('muted', !showGhost); }
+    function toggleFocus() { focusMode = !focusMode; document.getElementById('btn-focus').classList.toggle('muted', !focusMode); }
+
+    buildStepBubbles(); updateStepCard(); updateRepCounter();
+    const mpTimeout = setTimeout(() => {
+      if (typeof Pose === 'undefined') {
+        document.getElementById('loading').style.display = 'none'; const eb = document.getElementById('error-box'); eb.style.display = 'flex'; document.getElementById('err-msg').textContent = 'MediaPipe failed to load. Make sure you are connected to the internet.';
+      }
+    }, 8000);
+    const pose = new Pose({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+    pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, enableSegmentation: true, smoothSegmentation: true, minDetectionConfidence: 0.4, minTrackingConfidence: 0.35 });
+    pose.onResults(onResults);
+    const camera = new Camera(video, { onFrame: async () => { await pose.send({ image: video }); }, width: 960, height: 540 });
+    document.getElementById('load-msg').textContent = 'Requesting camera...';
+    camera.start().then(() => {
+      clearTimeout(mpTimeout); document.getElementById('load-msg').textContent = 'Ready!';
+      setTimeout(() => {
+        const ov = document.getElementById('loading'); ov.style.opacity = '0'; setTimeout(() => { ov.style.display = 'none'; }, 650);
+        document.getElementById('step-card').style.display = 'none';
+        setTimeout(() => {
+          framingIntroDone = false; const introStarted = speakFromPool('greeting', GREETINGS, { force: true, minGap: 0 });
+          const introDelay = introStarted ? 2200 : 1200; lastFramingCueTime = Date.now() + introDelay + 3500; setTimeout(() => { framingIntroDone = true; }, introDelay);
+        }, 800);
+      }, 700);
+    }).catch(err => {
+      clearTimeout(mpTimeout); document.getElementById('loading').style.display = 'none'; const eb = document.getElementById('error-box'); eb.style.display = 'flex'; document.getElementById('err-msg').textContent = 'Camera error: ' + (err.message || 'Permission denied.');
+    });
+  </script>
+</body>
+
+</html>

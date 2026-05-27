@@ -263,16 +263,28 @@
       foldGood: ["Good fold.", "Torso angle confirmed.", "Excellent forward fold."],
       kneesIntro: ["Keep your knees straight and push your tailbone toward the ceiling.", "Straighten the knees. Lengthen the spine.", "Push the hips up and straighten both knees."],
       kneesCue: [
-  "Continue lengthening the legs.",
-  "Keep the knees long and soft.",
-  "Gently straighten the legs a little more.",
-  "Lift the hips upward and lengthen the knees."
+    "Continue keeping the knees long and straight.",
+    "Stay active through the legs.",
+    "Keep length through the backs of the knees.",
+    "Maintain soft, straight legs.",
+    "Continue reaching the tailbone upward.",
+    "Keep the legs engaged and long."
 ],
       kneesGood: ["Knees are straight. Good.", "Straight legs confirmed.", "Good length in the legs."],
       neckIntro: ["Relax your neck so the crown of your head points toward the floor.", "Let your head hang heavy. Release neck tension.", "Look back through your legs to relax the neck."],
       neckCue: ["Relax the neck. Point the top of your head down.", "Don't look up. Let the head hang.", "Release your neck completely."],
       neckGood: ["Neck is relaxed.", "Head position confirmed.", "Good. Keep the neck soft."],
-      holdIntro: ["Hold here and breathe. Let gravity decompress your back.", "Stay folded. Hands may or may not touch the floor, just let gravity work.", "Hold this stretch. Feel your back decompress."],
+      holdIntro: [
+    "Hold here and breathe. Let gravity decompress your back.",
+    
+    "Your hands can hang toward the floor, or rest on your shins, calves, ankles, or knees depending on your range.",
+    
+    "Allow the upper body to relax. Hands may rest wherever feels supportive today.",
+    
+    "Let the arms hang naturally, or lightly hold the legs wherever comfortable.",
+    
+    "Stay folded and breathe steadily. Your hands do not need to touch the floor."
+],
       holdCue: ["Hold. Keep breathing.", "Stay in the fold. Relax the spine.", "Keep holding. Breathe deeply."],
       outOfFrame: [
         "You are out of frame. Step back until your full body is visible.",
@@ -285,10 +297,7 @@
         "I can see you again. Rebuild your posture from the beginning.",
       ],
       complete: ["Fold complete. Slowly roll up to standing.", "That is done. Bend your knees slightly and roll up.", "Stretch complete. Rise up slowly."],
-      completeExtra: ["Good work decompressing the spine.", "Your back should feel much better.", "Great focus on the stretch.","Excellent work.",
-  "Beautiful forward fold.",
-  "Great job decompressing the spine.",
-  "Well done. Your stretch is complete."],
+      completeExtra: ["Good work decompressing the spine.", "Your back should feel much better.", "Great focus on the stretch."],
     };
 
     function shuffleArray(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -402,35 +411,51 @@
     }
     function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
     function isFullBodyVisible(lm) {
-  if (!lm || lm.length < 29) return false;
+      if (!lm || lm.length < 29) return false;
+      const visible = i => (lm[i]?.visibility ?? 0) > 0.30;
+      const inFrame = i => lm[i] && lm[i].x > 0.03 && lm[i].x < 0.97 && lm[i].y > 0.03 && lm[i].y < 0.98;
+      const pairVisible = (a, b) => (visible(a) && inFrame(a)) || (visible(b) && inFrame(b));
+      return visible(0) && inFrame(0) && pairVisible(11, 12) && pairVisible(23, 24) && pairVisible(25, 26) && pairVisible(27, 28);
+    }
+    function isActualHuman(lm){
 
-  const visible = i => (lm[i]?.visibility ?? 0) > 0.55;
+    if(!lm || lm.length < 29)
+        return false;
 
-  const required = [0,11,12,23,24,25,26,27,28];
+    // Must see key body points
+    const required = [0,11,12,23,24,27,28];
 
-  // all major landmarks visible
-  const enoughVisible = required.every(i => visible(i));
+    const visibleCount = required.filter(
+        i => (lm[i]?.visibility ?? 0) > 0.65
+    ).length;
 
-  if (!enoughVisible) return false;
+    if(visibleCount < 6)
+        return false;
 
-  // body should occupy enough screen area
-  const bodyWidth =
-    Math.abs(lm[11].x - lm[12].x);
+    // Reject tiny object shapes
+    const shoulderSpan =
+        Math.abs(lm[11].x - lm[12].x);
 
-  const bodyHeight =
-    Math.abs(lm[0].y - ((lm[27].y + lm[28].y)/2));
+    const hipSpan =
+        Math.abs(lm[23].x - lm[24].x);
 
-  if (bodyWidth < 0.08 || bodyHeight < 0.35)
-    return false;
+    if(shoulderSpan < 0.05)
+        return false;
 
-  // reject partial bodies near edge
-  const centerX =
-    (lm[23].x + lm[24].x) / 2;
+    if(hipSpan < 0.05)
+        return false;
 
-  if (centerX < 0.2 || centerX > 0.8)
-    return false;
+    // Human body height check
+    const bodyHeight =
+        Math.abs(
+            lm[0].y -
+            ((lm[27].y + lm[28].y)/2)
+        );
 
-  return true;
+    if(bodyHeight < 0.35)
+        return false;
+
+    return true;
 }
     function assessFeetWidth(lm) {
       if (!vis(lm, 27, 28, 11, 12)) return { ok: false, reason: 'notVisible', score: 0 };
@@ -488,7 +513,7 @@
       const s = sideIdx(lm); if (!vis(lm, s.sh, s.hip)) return { ok: false, score: 0 };
       const dy = lm[s.hip].y - lm[s.sh].y;
       const score = clamp(Math.round((0.3 - dy) / 0.2 * 100), 0, 100);
-      return { ok: dy < 0.15, score, dy };
+      return { ok: dy < 0.22, score, dy };
     }
     function kneeAnkIdx(lm) {
       const left = visibleSide(lm) === 'left';
@@ -497,8 +522,29 @@
     function assessKnees(lm) {
       const s = kneeAnkIdx(lm); if (!vis(lm, s.hip, s.knee, s.ank)) return { ok: false, score: 0 };
       const ang = angle3(lm[s.hip], lm[s.knee], lm[s.ank]);
-      const score = clamp(Math.round((ang - 125) / 25 * 100), 0, 100);
-      return { ok: ang > 138, score, ang, ...s };
+      // VISUAL + SCORE ALIGNMENT
+
+const isStraight = ang > 138;
+
+// smoother realistic scoring
+const score = clamp(
+    Math.round((ang - 125) / 20 * 100),
+    0,
+    100
+);
+
+return {
+    ok: isStraight,
+    score,
+    ang,
+    ...s
+};
+      return {
+    ok: isStraight,
+    score,
+    ang,
+    ...s
+};
     }
     function drawKneeAngle(lm) {
       const k = assessKnees(lm);
@@ -554,23 +600,15 @@
 
     const maskCanvas = document.createElement('canvas'), maskCtx = maskCanvas.getContext('2d');
     const glowCanvas = document.createElement('canvas'), glowCtx = glowCanvas.getContext('2d');
-    const G_POSE = {
-  head: { x: .46, y: .50 },
-  sh: { x: .46, y: .42 },
-  hip: { x: .58, y: .46 },
-  knee: { x: .60, y: .68 },
-  ank: { x: .62, y: .88 },
-
-  elbow: { x: .44, y: .58 },
-
-  // hands hanging downward
-  wrist: { x: .42, y: .80 }
-};
+    const G_POSE = { head: { x: .46, y: .50 }, sh: { x: .46, y: .40 }, hip: { x: .56, y: .40 }, knee: { x: .56, y: .65 }, ank: { x: .56, y: .86 }, elbow: { x: .46, y: .55 }, wrist: { x: .50, y: .58} };
     const G_BONES = [['head', 'sh'], ['sh', 'hip'], ['hip', 'knee'], ['knee', 'ank'], ['sh', 'elbow'], ['elbow', 'wrist']];
     function gC(p) { return { x: p.x * canvas.width, y: p.y * canvas.height }; }
     function lC(p) { return { x: (1 - p.x) * canvas.width, y: p.y * canvas.height }; }
     function drawGhost() {
-      if (!showGhost) return;
+      if (
+    !showGhost ||
+    phase !== 'schematic'
+) return;
       ctx.save(); ctx.strokeStyle = 'rgba(255,80,80,.20)'; ctx.fillStyle = 'rgba(255,80,80,.25)'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([5, 8]);
       for (const [a, b] of G_BONES) { const pa = gC(G_POSE[a]), pb = gC(G_POSE[b]); ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke(); }
       ctx.setLineDash([]);
@@ -589,18 +627,11 @@
       ctx.save(); ctx.drawImage(glowCanvas, 0, 0); ctx.restore();
     }
     function assessArms(lm) {
-
-  const s = sideIdx(lm);
-
-  if (!vis(lm, s.sh, s.el, s.wr))
-    return { ok: true };
-
-  // relaxed hanging arm accepted
-  const wristBelowShoulder =
-    lm[s.wr].y > lm[s.sh].y;
-
-  return { ok: wristBelowShoulder };
-}
+      const s = sideIdx(lm);
+      if (!vis(lm, s.sh, s.el, s.wr)) return { ok: false };
+      const ang = angle3(lm[s.sh], lm[s.el], lm[s.wr]);
+      return { ok: ang > 150 };
+    }
     function segmentStates(lm) {
       let feetOk = assessFeetWidth(lm).ok;
       if (feetOkLocked) {
@@ -663,30 +694,39 @@
     }
     function getAuraColor(lm) {
 
-  // neutral blue at framing/start
-  if (phase === 'framing')
-    return COL_CYAN;
+    // Neutral blue during framing/start
+    if (
+        phase === 'framing' ||
+        phase === 'feetPlacement'
+    ) {
+        return COL_CYAN;
+    }
 
-  // neutral blue after completion
-  if (phase === 'complete')
-    return COL_CYAN;
+    // Neutral blue after completion
+    if (phase === 'complete') {
+        return COL_CYAN;
+    }
 
-  const st = segmentStates(lm);
+    const st = segmentStates(lm);
 
-  const vals = [
-    st.feetOk,
-    st.sideOk && st.postureOk,
-    (!foldLocked || st.foldOk),
-    (!kneesLocked || st.kneesOk),
-    (!neckLocked || st.neckOk)
-  ];
+    const vals = [
+        st.feetOk,
+        st.sideOk && st.postureOk,
+        (!foldLocked || st.foldOk),
+        (!kneesLocked || st.kneesOk),
+        (!neckLocked || st.neckOk)
+    ];
 
-  const good = vals.filter(Boolean).length;
+    const good =
+        vals.filter(Boolean).length;
 
-  if (good === vals.length) return COL_GREEN;
-  if (good === 0) return COL_RED;
+    if (good === vals.length)
+        return COL_GREEN;
 
-  return COL_AMBER;
+    if (good === 0)
+        return COL_RED;
+
+    return COL_AMBER;
 }
     function updateScorePanel(sc) {
       if (!sc) {
@@ -719,14 +759,14 @@
       sessionStarted = true; framingConfirmed = true; phaseStableFrames = 0; feetOkLocked = false; sideOkLocked = false; postureCueDone = false; foldLocked = false; kneesLocked = false; neckLocked = false;
       holdStartTime = 0; holdComplete = false; isFirstRep = true; _sideConfirmCount = 0; phaseVoiceLock = false; outOfFrameFrames = 0; frameInterrupt = null; frameRestartInProgress = false; flowToken++; resetCueQueues();
       document.getElementById('framing-overlay').style.display = 'none'; document.getElementById('step-card').style.display = 'block'; document.getElementById('complete-card').style.display = 'none';
-      setPhase('feetPlacement', 0); updateRepCounter(); speakFromPool('feet-intro', VOICE.feetIntro, { force: true, minGap: 0 });
+      setPhase('schematic', 0); updateRepCounter(); speakFromPool('feet-intro', VOICE.feetIntro, { force: true, minGap: 0 });
     }
     function enterSideTurn() { feetOkLocked = true; setPhase('sideTurn', 1); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('feet-good', VOICE.feetGood), drawFromQueue('side-intro', VOICE.sideTurnIntro)], 300, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
     function enterPostureCue() { sideOkLocked = true; _sideConfirmCount = 0; setPhase('postureCue', 2); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('side-good', VOICE.sideTurnGood), drawFromQueue('posture', VOICE.postureCue)], 300, () => { if (token !== flowToken) return; postureCueDone = true; phaseVoiceLock = false; enterFold(); }, token); }
     function enterFold() { setPhase('fold', 3); speakFromPool('fold-intro', VOICE.foldIntro, { force: true, minGap: 0 }); }
     function enterKnees() { foldLocked = true; setPhase('knees', 4); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('fold-good', VOICE.foldGood), drawFromQueue('knees-intro', VOICE.kneesIntro)], 250, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
     function enterNeck() { kneesLocked = true; setPhase('neck', 5); phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('knees-good', VOICE.kneesGood), drawFromQueue('neck-intro', VOICE.neckIntro)], 250, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); }
-    function enterHold() { neckLocked = true; setPhase('hold', 6); holdStartTime = Date.now(); holdComplete = false; phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('neck-good', VOICE.neckGood), drawFromQueue('hold-intro', VOICE.holdIntro)], 180, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); let holdInterval = setInterval(() => { if (!sessionStarted || phase !== 'hold') clearInterval(holdInterval); else updateRepCounter(); }, 100); }
+    function enterHold() { neckLocked = true; setPhase('hold', 6); holdStartTime = Date.now(); window.lastCountdown = null; holdComplete = false; phaseVoiceLock = true; const token = ++flowToken; speakSequence([drawFromQueue('neck-good', VOICE.neckGood), drawFromQueue('hold-intro', VOICE.holdIntro)], 180, () => { if (token !== flowToken) return; phaseVoiceLock = false; }, token); let holdInterval = setInterval(() => { if (!sessionStarted || phase !== 'hold') clearInterval(holdInterval); else updateRepCounter(); }, 100); }
     function finishSession() {
       completed = true; setPhase('complete', 7); document.getElementById('step-card').style.display = 'none'; document.getElementById('complete-card').style.display = 'block'; synth.cancel();
       speakSequence([drawFromQueue('complete', VOICE.complete), drawFromQueue('complete-extra', VOICE.completeExtra)], 500);
@@ -764,102 +804,448 @@
       setPhase('feetPlacement', 0); updateRepCounter(); speak(cue, { force: true, minGap: 0 });
     }
     function handlePoseFlow(lm) {
-      if (!sessionStarted || completed || phaseVoiceLock) return;
-      const now = Date.now();
-      if (phase !== 'framing' && phase !== 'complete') {
-        const framingState = checkFramingMidSession(lm);
-        if (framingState !== 'ok') { outOfFrameFrames++; if (outOfFrameFrames > OUT_OF_FRAME_GATE_FRAMES) interruptForPartialFrame(now); return; }
-        if (frameInterrupt) { restartFromVisibleFrame(); return; }
-        outOfFrameFrames = 0;
-      }
-      if (phase === 'feetPlacement') {
-        const fw = assessFeetWidth(lm);
-        if (fw.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterSideTurn(); }
-        else {
-          phaseStableFrames = 0; if (feetOkLocked) feetOkLocked = false;
-          if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
-            if (fw.reason === 'tooClose') speakFromPool('feet-close', VOICE.feetTooClose, { minGap: MIN_CUE_GAP });
-            else if (fw.reason === 'slightlyNarrow') speakFromPool('feet-narrow', VOICE.feetSlightlyNarrow, { minGap: MIN_CUE_GAP });
-            else if (fw.reason === 'tooWide') speakFromPool('feet-wide', VOICE.feetTooWide, { minGap: MIN_CUE_GAP });
-          }
-        }
-        return;
-      }
-      if (phase === 'sideTurn') {
-        if (isSideways(lm)) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterPostureCue(); }
-        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: MIN_CUE_GAP }); }
-        return;
-      }
-      if (phase === 'fold') {
-        if (!isSidewaysFrame(lm)) {
-          repBreakFrames++;
-          if (repBreakFrames > BREAK_GATE_FRAMES) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
-          if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: MIN_CUE_GAP });
-          return;
-        }
-        repBreakFrames = 0;
-        const fold = assessFold(lm);
-        if (fold.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterKnees(); }
-        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('fold-cue', VOICE.foldCue, { minGap: MIN_CUE_GAP }); }
-        return;
-      }
-      if (phase === 'knees') {
-        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm);
-        if (!sideOk) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
-        if (!fold.ok) { foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('fold', 3, 'Fold forward from the hips.'); return; }
-        if (knees.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterNeck(); }
-        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('knees-cue', VOICE.kneesCue, { minGap: MIN_CUE_GAP }); }
-        return;
-      }
-      if (phase === 'neck') {
-        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm), neck = assessNeck(lm);
-        if (!sideOk) { sideOkLocked = false; foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('sideTurn', 1, 'Turn sideways again.'); return; }
-        if (!fold.ok) { foldLocked = false; kneesLocked = false; neckLocked = false; resetToPhase('fold', 3, 'Fold forward from the hips.'); return; }
-        if (!knees.ok) { kneesLocked = false; neckLocked = false; resetToPhase('knees', 4, 'Straighten the knees.'); return; }
-        if (neck.ok) { phaseStableFrames++; if (phaseStableFrames > GATE_FRAMES_FAST) enterHold(); }
-        else { phaseStableFrames = 0; if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) speakFromPool('neck-cue', VOICE.neckCue, { minGap: MIN_CUE_GAP }); }
-        return;
-      }
-      if (phase === 'hold') {
-        const sideOk = isSidewaysFrame(lm), fold = assessFold(lm), knees = assessKnees(lm), neck = assessNeck(lm);
-        if (!sideOk || !fold.ok || !knees.ok || !neck.ok) {
-          repBreakFrames++;
-          if (repBreakFrames > BREAK_GATE_FRAMES) {
-            restartPoseSetup('Form broke. Restart from feet placement.');
-            return;
-          }
-          if (!isSpeaking && now - lastCueTime > SHORT_CUE_GAP) {
-            if (!sideOk) speakFromPool('side-cue', VOICE.sideTurnCue, { minGap: SHORT_CUE_GAP });
-            else if (!fold.ok) speakFromPool('fold-cue', VOICE.foldCue, { minGap: SHORT_CUE_GAP });
-            else if (!knees.ok) speakFromPool('knees-cue', VOICE.kneesCue, { minGap: SHORT_CUE_GAP });
-            else if (!neck.ok) speakFromPool('neck-cue', VOICE.neckCue, { minGap: SHORT_CUE_GAP });
-          }
-          return;
-        }
-        repBreakFrames = 0;
-        const elapsed = Date.now() - holdStartTime;
-        const remaining =
-  Math.ceil((HOLD_MS - elapsed) / 1000);
+  if (!sessionStarted || completed || phaseVoiceLock) return;
 
-if (
-  remaining <= 3 &&
-  remaining > 0 &&
-  now - lastCueTime > 900
-) {
-  speak(String(remaining), {
-    force: true,
-    minGap: 0
-  });
+  const now = Date.now();
+  // SHOW STICKMAN SCHEMATIC FIRST
+if (phase === 'schematic') {
+
+    if (!window.schematicStartTime) {
+        window.schematicStartTime = now;
+
+        speak(
+            "Watch the forward fold shape first.",
+            { force:true, minGap:0 }
+        );
+    }
+
+    // Show schematic for 3 seconds
+    if (now - window.schematicStartTime > 3000) {
+
+        window.schematicStartTime = null;
+
+        setPhase('feetPlacement', 0);
+
+        speakFromPool(
+            'feet-intro',
+            VOICE.feetIntro,
+            { force:true, minGap:0 }
+        );
+    }
+
+    return;
 }
-        if (elapsed >= HOLD_MS) {
-          holdComplete = true;
-          finishSession();
-        } else if (!isSpeaking && now - lastCueTime > REP_CUE_REPEAT_MS) {
-          speakFromPool('hold-cue', VOICE.holdCue, { minGap: REP_CUE_REPEAT_MS });
+
+  if (phase !== 'framing' && phase !== 'complete') {
+
+    const framingState = checkFramingMidSession(lm);
+
+    if (framingState !== 'ok') {
+      outOfFrameFrames++;
+
+      if (outOfFrameFrames > OUT_OF_FRAME_GATE_FRAMES) {
+        interruptForPartialFrame(now);
+      }
+      return;
+    }
+
+    if (frameInterrupt) {
+      restartFromVisibleFrame();
+      return;
+    }
+
+    outOfFrameFrames = 0;
+  }
+
+  // ================= FEET PHASE =================
+
+  if (phase === 'feetPlacement') {
+
+    // NEW HUMAN VALIDATION
+    const humanDetected = isActualHuman(lm);
+
+    if (!humanDetected) {
+
+      phaseStableFrames = 0;
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        speak(
+          "Please step fully into frame. Waiting for a person.",
+          { minGap: MIN_CUE_GAP }
+        );
+      }
+
+      return;
+    }
+
+    const fw = assessFeetWidth(lm);
+
+    if (fw.ok) {
+
+      phaseStableFrames++;
+
+      if (phaseStableFrames > GATE_FRAMES_FAST) {
+        enterSideTurn();
+      }
+
+    } else {
+
+      phaseStableFrames = 0;
+
+      if (feetOkLocked) {
+        feetOkLocked = false;
+      }
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        if (fw.reason === 'tooClose') {
+
+          speakFromPool(
+            'feet-close',
+            VOICE.feetTooClose,
+            { minGap: MIN_CUE_GAP }
+          );
+
+        } else if (fw.reason === 'slightlyNarrow') {
+
+          speakFromPool(
+            'feet-narrow',
+            VOICE.feetSlightlyNarrow,
+            { minGap: MIN_CUE_GAP }
+          );
+
+        } else if (fw.reason === 'tooWide') {
+
+          speakFromPool(
+            'feet-wide',
+            VOICE.feetTooWide,
+            { minGap: MIN_CUE_GAP }
+          );
         }
-        return;
       }
     }
+
+    return;
+  }
+
+  // ================= SIDE TURN =================
+
+  if (phase === 'sideTurn') {
+
+    if (isSideways(lm)) {
+
+      phaseStableFrames++;
+
+      if (phaseStableFrames > GATE_FRAMES_FAST) {
+        enterPostureCue();
+      }
+
+    } else {
+
+      phaseStableFrames = 0;
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        speakFromPool(
+          'side-cue',
+          VOICE.sideTurnCue,
+          { minGap: MIN_CUE_GAP }
+        );
+      }
+    }
+
+    return;
+  }
+
+  // ================= FOLD =================
+
+  if (phase === 'fold') {
+
+    if (!isSidewaysFrame(lm)) {
+
+      repBreakFrames++;
+
+      if (repBreakFrames > BREAK_GATE_FRAMES) {
+
+        sideOkLocked = false;
+        foldLocked = false;
+        kneesLocked = false;
+        neckLocked = false;
+
+        resetToPhase(
+          'sideTurn',
+          1,
+          'Turn sideways again.'
+        );
+
+        return;
+      }
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        speakFromPool(
+          'side-cue',
+          VOICE.sideTurnCue,
+          { minGap: MIN_CUE_GAP }
+        );
+      }
+
+      return;
+    }
+
+    repBreakFrames = 0;
+
+    const fold = assessFold(lm);
+
+    if (fold.ok) {
+
+      phaseStableFrames++;
+
+      if (phaseStableFrames > GATE_FRAMES_FAST) {
+        enterKnees();
+      }
+
+    } else {
+
+      phaseStableFrames = 0;
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        speakFromPool(
+          'fold-cue',
+          VOICE.foldCue,
+          { minGap: MIN_CUE_GAP }
+        );
+      }
+    }
+
+    return;
+  }
+
+  // ================= KNEES =================
+
+  if (phase === 'knees') {
+
+    const sideOk = isSidewaysFrame(lm);
+    const fold = assessFold(lm);
+    const knees = assessKnees(lm);
+
+    if (!sideOk) {
+
+      sideOkLocked = false;
+      foldLocked = false;
+      kneesLocked = false;
+      neckLocked = false;
+
+      resetToPhase(
+        'sideTurn',
+        1,
+        'Turn sideways again.'
+      );
+
+      return;
+    }
+
+    if (!fold.ok) {
+
+      foldLocked = false;
+      kneesLocked = false;
+      neckLocked = false;
+
+      resetToPhase(
+        'fold',
+        3,
+        'Fold forward from the hips.'
+      );
+
+      return;
+    }
+
+    if (knees.ok) {
+
+      phaseStableFrames++;
+
+      if (phaseStableFrames > GATE_FRAMES_FAST) {
+        enterNeck();
+      }
+
+    } else {
+
+      phaseStableFrames = 0;
+
+      if (!isSpeaking && now - lastCueTime > MIN_CUE_GAP) {
+
+        speakFromPool(
+          'knees-cue',
+          VOICE.kneesCue,
+          { minGap: 5000 }
+        );
+      }
+    }
+
+    return;
+  }
+
+  // ================= NECK =================
+
+  if (phase === 'neck') {
+
+    const sideOk = isSidewaysFrame(lm);
+    const fold = assessFold(lm);
+    const knees = assessKnees(lm);
+    const neck = assessNeck(lm);
+
+    if (!sideOk) {
+      resetToPhase('sideTurn',1,'Turn sideways again.');
+      return;
+    }
+
+    if (!fold.ok) {
+      resetToPhase('fold',3,'Fold forward from the hips.');
+      return;
+    }
+
+    if (!knees.ok) {
+      resetToPhase('knees',4,'Straighten the knees.');
+      return;
+    }
+
+    if (neck.ok) {
+
+      phaseStableFrames++;
+
+      if (phaseStableFrames > GATE_FRAMES_FAST) {
+        enterHold();
+      }
+
+    } else {
+
+      phaseStableFrames = 0;
+
+      if (!isSpeaking && now-lastCueTime>MIN_CUE_GAP) {
+
+        speakFromPool(
+          'neck-cue',
+          VOICE.neckCue,
+          {minGap:MIN_CUE_GAP}
+        );
+      }
+    }
+
+    return;
+  }
+
+  // ================= HOLD =================
+
+  if (phase === 'hold') {
+
+    const sideOk = isSidewaysFrame(lm);
+    const fold = assessFold(lm);
+    const knees = assessKnees(lm);
+    const neck = assessNeck(lm);
+
+    if (!sideOk || !fold.ok || !knees.ok || !neck.ok) {
+
+        repBreakFrames++;
+
+        if (repBreakFrames > BREAK_GATE_FRAMES) {
+
+            restartPoseSetup(
+                'Form broke. Restart from feet placement.'
+            );
+
+            return;
+        }
+
+        if (
+            !isSpeaking &&
+            now - lastCueTime > SHORT_CUE_GAP
+        ) {
+
+            if (!sideOk) {
+
+                speakFromPool(
+                    'side-cue',
+                    VOICE.sideTurnCue,
+                    {minGap:SHORT_CUE_GAP}
+                );
+
+            } else if (!fold.ok) {
+
+                speakFromPool(
+                    'fold-cue',
+                    VOICE.foldCue,
+                    {minGap:SHORT_CUE_GAP}
+                );
+
+            } else if (!knees.ok) {
+
+                speakFromPool(
+                    'knees-cue',
+                    VOICE.kneesCue,
+                    {minGap:3500}
+                );
+
+            } else if (!neck.ok) {
+
+                speakFromPool(
+                    'neck-cue',
+                    VOICE.neckCue,
+                    {minGap:SHORT_CUE_GAP}
+                );
+            }
+        }
+
+        return;
+    }
+
+    repBreakFrames = 0;
+
+    const elapsed =
+        Date.now() - holdStartTime;
+        // COUNTDOWN VOICE
+const remaining =
+    Math.ceil((HOLD_MS - elapsed)/1000);
+
+if (
+    [5,4,3,2,1].includes(remaining) &&
+    window.lastCountdown !== remaining
+) {
+
+    window.lastCountdown = remaining;
+
+    speak(
+        remaining.toString(),
+        {
+            force:true,
+            minGap:0
+        }
+    );
+}
+
+    if (elapsed >= HOLD_MS) {
+
+        holdComplete = true;
+        finishSession();
+
+    } else if (
+        !isSpeaking &&
+        now - lastCueTime > REP_CUE_REPEAT_MS
+    ) {
+
+        speakFromPool(
+            'hold-cue',
+            VOICE.holdCue,
+            {minGap:REP_CUE_REPEAT_MS}
+        );
+    }
+
+    return;
+}
+}
+
+
 
     function onResults(results) {
       const CW = canvas.width, CH = canvas.height;
